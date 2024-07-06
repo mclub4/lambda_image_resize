@@ -5,25 +5,35 @@ import com.amazonaws.services.lambda.runtime.LambdaLogger;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
 import com.amazonaws.services.lambda.runtime.events.S3Event;
 import com.amazonaws.services.lambda.runtime.events.models.s3.S3EventNotification;
+import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 import javax.imageio.ImageIO;
 import java.awt.*;
 import java.awt.image.BufferedImage;
-import java.io.IOException;
+import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class Handler implements RequestHandler<S3Event, String> {
+
+    private final String baseType = "image/";
+    private final int OUTPUT_SIZE = 400;
 
     @Override
     public String handleRequest(S3Event s3Event, Context context) {
         LambdaLogger logger = context.getLogger();
 
         logger.log(s3Event.getRecords().size() + " Images Uploaded Event Accepted \n");
+
+        S3Client s3Client = null;
+        InputStream inputStream = null;
 
         try{
             S3EventNotification.S3EventNotificationRecord record = s3Event.getRecords().get(0);
@@ -40,27 +50,52 @@ public class Handler implements RequestHandler<S3Event, String> {
             String fileName = matcher.group(2);
             String imgType = matcher.group(3);
 
-            final List<String> allowedTypes = List.of(".jpg", "jpeg", "png");
+            final List<String> allowedTypes = List.of(".jpg", ".jpeg", ".png");
             if(!allowedTypes.contains(imgType)){
                 logger.log(fileName + " has unsupported image type " + imgType);
                 return "";
             }
 
-            S3Client s3Client = S3Client.builder().build();
-            InputStream inputStream = s3Client.getObject(GetObjectRequest.builder()
+            s3Client = S3Client.builder().build();
+            inputStream = s3Client.getObject(GetObjectRequest.builder()
                     .bucket(srcBucket)
                     .key(srcKey)
                     .build());
 
             BufferedImage srcImage = ImageIO.read(inputStream);
 
+            BufferedImage newImage = resize(srcImage, OUTPUT_SIZE);
+
+            String dstBucket = "d";
+
+            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+            ImageIO.write(newImage, imgType.substring(1), outputStream);
+
+            String contentType = baseType + imgType.substring(1);
+
+            Map<String, String> metadata = new HashMap<String, String>();
+            metadata.put("Content-Length", Integer.toString(outputStream.size()));
+            metadata.put("Content-Type", contentType);
 
 
-        } catch (IOException e) {
+            PutObjectRequest putObjectRequest = PutObjectRequest.builder()
+                    .bucket(dstBucket)
+                    .key(srcKey)
+                    .metadata(metadata)
+                    .build();
+
+            logger.log("Writing to: " + dstBucket + "/" + srcKey);
+            s3Client.putObject(putObjectRequest, RequestBody.fromBytes(outputStream.toByteArray()));
+            logger.log("Successfully resized " + srcBucket + "/" + srcKey + "and uploaded to " + dstBucket + "/" + srcKey);
+
+            logger.log("Deleting from: " + srcBucket + "/" + srcKey);
+            s3Client.deleteObject(builder -> builder.bucket(dstBucket).key(srcKey));
+
+            return "Ok";
+        } catch (Exception e) {
+            logger.log(e.getMessage());
             throw new RuntimeException(e);
         }
-
-        return "";
     }
 
     public BufferedImage resize(BufferedImage img, int size){
@@ -74,6 +109,7 @@ public class Handler implements RequestHandler<S3Event, String> {
 
         BufferedImage resizedImg = new BufferedImage(newWidth, newHeight, BufferedImage.TYPE_INT_RGB);
         Graphics2D g = resizedImg.createGraphics();
+        g.setPaint(Color.WHITE);
         g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
         g.drawImage(img, 0, 0, newWidth, newHeight, null);
         g.dispose();
