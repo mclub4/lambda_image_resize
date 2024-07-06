@@ -66,7 +66,7 @@ public class Handler implements RequestHandler<S3Event, String> {
 
             BufferedImage newImage = resize(srcImage, OUTPUT_SIZE);
 
-            String dstBucket = "d";
+            String dstBucket = srcBucket + "-resized";
 
             ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
             ImageIO.write(newImage, imgType.substring(1), outputStream);
