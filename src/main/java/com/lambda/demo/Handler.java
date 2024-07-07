@@ -23,8 +23,14 @@ import java.util.regex.Pattern;
 
 public class Handler implements RequestHandler<S3Event, String> {
 
+    //이미지 베이스 타입 (Content-Type)
     private final String baseType = "image/";
+
+    //이미지를 줄이거나 늘릴 비율
     private final double SCALE = 0.5;
+
+    //해당 확장자를 가진 이미지만 처리
+    private final List<String> allowedTypes = List.of(".jpg", ".jpeg", ".png");
 
     @Override
     public String handleRequest(S3Event s3Event, Context context) {
@@ -36,10 +42,12 @@ public class Handler implements RequestHandler<S3Event, String> {
         InputStream inputStream = null;
 
         try{
+            //S3 Event로 부터 해당 Bucket 이름, 파일 명을 받아옴
             S3EventNotification.S3EventNotificationRecord record = s3Event.getRecords().get(0);
             String srcBucket = record.getS3().getBucket().getName();
             String srcKey = record.getS3().getObject().getUrlDecodedKey();
 
+            //정규식을 이용하여 확장자 추출
             Matcher matcher = Pattern.compile("(.+/)*(.+)(\\..+)$").matcher(srcKey);
             if (!matcher.matches()) {
                 logger.log("Unable to infer image type for key " + srcKey);
@@ -50,7 +58,7 @@ public class Handler implements RequestHandler<S3Event, String> {
             String fileName = matcher.group(2);
             String imgType = matcher.group(3);
 
-            final List<String> allowedTypes = List.of(".jpg", ".jpeg", ".png");
+            //원하는 이미지 타입이 아니면 무시
             if(!allowedTypes.contains(imgType)){
                 logger.log(fileName + " has unsupported image type " + imgType);
                 return "";
@@ -62,10 +70,13 @@ public class Handler implements RequestHandler<S3Event, String> {
                     .key(srcKey)
                     .build());
 
+            //이미지를 받아와서 메모리에 올림
             BufferedImage srcImage = ImageIO.read(inputStream);
 
+            //받아온 이미지를 가지고 Resized된 이미지 생성
             BufferedImage newImage = resize(srcImage, SCALE);
 
+            //크기를 조정한 이미지를 저장할 버킷
             String dstBucket = srcBucket + "-resized";
 
             ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
@@ -84,10 +95,12 @@ public class Handler implements RequestHandler<S3Event, String> {
                     .metadata(metadata)
                     .build();
 
+            //크기 조정한 이미지를 버킷에 저장
             logger.log("Writing to: " + dstBucket + "/" + srcKey);
             s3Client.putObject(putObjectRequest, RequestBody.fromBytes(outputStream.toByteArray()));
             logger.log("Successfully resized " + srcBucket + "/" + srcKey + "and uploaded to " + dstBucket + "/" + srcKey);
 
+            //기존 원본 이미지는 버킷에서 삭제
             logger.log("Deleting from: " + srcBucket + "/" + srcKey);
             s3Client.deleteObject(builder -> builder.bucket(srcBucket).key(srcKey));
 
@@ -113,7 +126,7 @@ public class Handler implements RequestHandler<S3Event, String> {
         int originalWidth = img.getWidth();
         int originalHeight = img.getHeight();
 
-        // 비율을 유지하여 새로운 크기를 계산합니다.
+        // 비율을 유지하여 새로운 크기를 계산
         int newWidth = (int) (originalWidth * scale);
         int newHeight = (int) (originalHeight * scale);
 
