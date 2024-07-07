@@ -24,7 +24,7 @@ import java.util.regex.Pattern;
 public class Handler implements RequestHandler<S3Event, String> {
 
     private final String baseType = "image/";
-    private final int OUTPUT_SIZE = 400;
+    private final double SCALE = 0.5;
 
     @Override
     public String handleRequest(S3Event s3Event, Context context) {
@@ -64,7 +64,7 @@ public class Handler implements RequestHandler<S3Event, String> {
 
             BufferedImage srcImage = ImageIO.read(inputStream);
 
-            BufferedImage newImage = resize(srcImage, OUTPUT_SIZE);
+            BufferedImage newImage = resize(srcImage, SCALE);
 
             String dstBucket = srcBucket + "-resized";
 
@@ -109,18 +109,13 @@ public class Handler implements RequestHandler<S3Event, String> {
         }
     }
 
-    public BufferedImage resize(BufferedImage img, int size) {
+    public BufferedImage resize(BufferedImage img, double scale) {
         int originalWidth = img.getWidth();
         int originalHeight = img.getHeight();
 
-        int newWidth, newHeight;
-        if (originalWidth > originalHeight) {
-            newWidth = size;
-            newHeight = (newWidth * originalHeight) / originalWidth;
-        } else {
-            newHeight = size;
-            newWidth = (newHeight * originalWidth) / originalHeight;
-        }
+        // 비율을 유지하여 새로운 크기를 계산합니다.
+        int newWidth = (int) (originalWidth * scale);
+        int newHeight = (int) (originalHeight * scale);
 
         BufferedImage resizedImg = new BufferedImage(newWidth, newHeight, BufferedImage.TYPE_INT_RGB);
         Graphics2D g = resizedImg.createGraphics();
