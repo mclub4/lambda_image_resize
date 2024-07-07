@@ -109,14 +109,18 @@ public class Handler implements RequestHandler<S3Event, String> {
         }
     }
 
-    public BufferedImage resize(BufferedImage img, int size){
+    public BufferedImage resize(BufferedImage img, int size) {
         int originalWidth = img.getWidth();
         int originalHeight = img.getHeight();
 
-        double ratio = (double) size / Math.min(originalWidth, originalHeight);
-
-        int newWidth = (int) (originalWidth * ratio);
-        int newHeight = (int) (originalHeight * ratio);
+        int newWidth, newHeight;
+        if (originalWidth > originalHeight) {
+            newWidth = size;
+            newHeight = (newWidth * originalHeight) / originalWidth;
+        } else {
+            newHeight = size;
+            newWidth = (newHeight * originalWidth) / originalHeight;
+        }
 
         BufferedImage resizedImg = new BufferedImage(newWidth, newHeight, BufferedImage.TYPE_INT_RGB);
         Graphics2D g = resizedImg.createGraphics();
@@ -125,9 +129,6 @@ public class Handler implements RequestHandler<S3Event, String> {
         g.drawImage(img, 0, 0, newWidth, newHeight, null);
         g.dispose();
 
-        int newLength = Math.min(newWidth, newHeight);
-        int x = (newWidth - newLength) / 2;
-        int y = (newHeight - newLength) / 2;
-        return resizedImg.getSubimage(x, y, newLength, newLength);
+        return resizedImg;
     }
 }
