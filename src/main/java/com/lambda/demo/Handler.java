@@ -40,7 +40,7 @@ public class Handler implements RequestHandler<S3Event, String> {
             String srcBucket = record.getS3().getBucket().getName();
             String srcKey = record.getS3().getObject().getUrlDecodedKey();
 
-            Matcher matcher = Pattern.compile("(.+\\\\/)*(.+)(\\\\..+)$").matcher(srcKey);
+            Matcher matcher = Pattern.compile("(.+/)*(.+)(\\..+)$").matcher(srcKey);
             if (!matcher.matches()) {
                 logger.log("Unable to infer image type for key " + srcKey);
                 return "";
@@ -89,12 +89,23 @@ public class Handler implements RequestHandler<S3Event, String> {
             logger.log("Successfully resized " + srcBucket + "/" + srcKey + "and uploaded to " + dstBucket + "/" + srcKey);
 
             logger.log("Deleting from: " + srcBucket + "/" + srcKey);
-            s3Client.deleteObject(builder -> builder.bucket(dstBucket).key(srcKey));
+            s3Client.deleteObject(builder -> builder.bucket(srcBucket).key(srcKey));
 
             return "Ok";
         } catch (Exception e) {
             logger.log(e.getMessage());
             throw new RuntimeException(e);
+        } finally {
+            if (inputStream != null) {
+                try {
+                    inputStream.close();
+                } catch (Exception e) {
+                    logger.log("Error closing inputStream: " + e.getMessage());
+                }
+            }
+            if (s3Client != null) {
+                s3Client.close();
+            }
         }
     }
 
